@@ -18,9 +18,7 @@ def _raise_http_exception(status_code: int, detail: str, log_message: Optional[s
         logger.error(log_message)
     raise HTTPException(status_code=status_code, detail=detail)
 
-
 class BaseService(Generic[T]):
-
     def __init__(self, model: Type[T], session: Session):
         self.model = model
         self.session = session
@@ -56,21 +54,21 @@ class BaseService(Generic[T]):
             )
 
     def get_by_name(self, name: str) -> Optional[T]:
-        """Retrieve a single user by name."""
+        """Retrieve a single item by name."""
         try:
-            user = self.session.query(self.model).filter(self.model.name == name).first()
-            if not user:
+            item = self.session.query(self.model).filter(self.model.name == name).first()
+            if not item:
                 _raise_http_exception(
                     status_code=404,
-                    detail=f"User with name '{name}' not found",
-                    log_message=f"User with name '{name}' not found"
+                    detail=f"Item with name '{name}' not found",
+                    log_message=f"Item with name '{name}' not found"
                 )
-            return user
+            return item
         except Exception as e:
             _raise_http_exception(
                 status_code=500,
                 detail="Internal server error",
-                log_message=f"Error retrieving user with name '{name}': {e}"
+                log_message=f"Error retrieving item with name '{name}': {e}"
             )
 
     def create(self, item: T) -> T:

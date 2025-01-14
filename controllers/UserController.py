@@ -49,14 +49,14 @@ def read_users(user_deps: GenericDependencies[UserService] = Depends(user_servic
 
 
 # Endpoint to retrieve a user by name
-@router.get("/user/read/{name}", response_model=schema.User, status_code=status.HTTP_200_OK)
+@router.get("/read/{name}", response_model=schema.User, status_code=status.HTTP_200_OK)
 def get_user_by_name(
         name: str,
         user_deps: GenericDependencies[UserService] = Depends(user_service_dependency)
 ):
     """Retrieve a user by name."""
     try:
-        user = user_deps.get_service().get_by_name(name)
+        user = user_deps.get_service().get_by_username(name)
         return user
     except HTTPException as e:
         raise e

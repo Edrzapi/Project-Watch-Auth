@@ -1,12 +1,23 @@
-from typing import Optional
-
+import logging
+from fastapi import HTTPException, Depends
+from typing import Optional, List
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from models.SQLModel import User, UserProfile
 from schemas import UserSchema as schema  # Assuming you have a UserSchema defined
 from services.BaseService import BaseService  # Import your BaseService
 
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.ERROR)
+
+def _raise_http_exception(status_code: int, detail: str, log_message: Optional[str] = None) -> None:
+    """Helper function to raise an HTTPException with optional logging."""
+    if log_message:
+        logger.error(log_message)
+    raise HTTPException(status_code=status_code, detail=detail)
 
 class UserService(BaseService[User]):
     def __init__(self, session: Session):
@@ -15,115 +26,187 @@ class UserService(BaseService[User]):
 
     def create_user(self, user_data: schema.UserCreate) -> User:
         """Create a new user."""
-        # Hash the password before creating the user
-        hashed_password = self.pwd_context.hash(user_data.password)
+        try:
+            # Check if the username already exists
+            existing_user = self.session.query(User).filter(User.username == user_data.username).first()
+            if existing_user:
+                _raise_http_exception(
+                    status_code=400,
+                    detail="Username already exists",
+                    log_message=f"Attempted to create user with existing username: {user_data.username}"
+                )
 
-        # Create the user profile, using empty strings if first_name or last_name are None
-        profile = UserProfile(
-            first_name=user_data.first_name or '',  # Use empty string if None
-            last_name=user_data.last_name or '',  # Use empty string if None
-        )
+            # Hash the password before saving the user
+            hashed_password = self.pwd_context.hash(user_data.password)
 
-        # Create the user with the profile
-        new_user = User(
-            username=user_data.username,
-            password_hash=hashed_password,  # Use the hashed password
-            profile=profile,  # Create the associated user profile
-        )
+            # Create the user profile
+            profile = UserProfile(
+                first_name=user_data.first_name or '',
+                last_name=user_data.last_name or '',
+            )
 
-        return self.create(new_user)
+            # Create the new user
+            new_user = User(
+                username=user_data.username,
+                password_hash=hashed_password,
+                profile=profile,
+            )
+
+            return self.create(new_user)  # Reuses the `create` method from BaseService
+
+        except Exception as e:
+            self.session.rollback()
+
+            # Check the exception message and handle based on that
+            if "Username already exists" in str(e):
+                # Specific case for username conflict
+                _raise_http_exception(
+                    status_code=409,
+                    detail="Username already exists",
+                    log_message=f"Error creating user: {e}"
+                )
+            elif "IntegrityError" in str(e):
+                # Handle IntegrityError
+                _raise_http_exception(
+                    status_code=400,
+                    detail="IntegrityError, please check details and try again.",
+                    log_message=f"IntegrityError: {e.orig}"
+                )
+            elif "OperationalError" in str(e):
+                # Handle OperationalError (e.g., DB connection issues)
+                _raise_http_exception(
+                    status_code=500,
+                    detail="Database operation error while creating user",
+                    log_message=f"OperationalError: {e.orig}"
+                )
+            elif "DataError" in str(e):
+                # Handle DataError (e.g., invalid data)
+                _raise_http_exception(
+                    status_code=400,
+                    detail="Invalid data error while creating user",
+                    log_message=f"DataError: {e.orig}"
+                )
+            elif "ProgrammingError" in str(e):
+                # Handle SQL programming error
+                _raise_http_exception(
+                    status_code=500,
+                    detail="SQL programming error while creating user",
+                    log_message=f"ProgrammingError: {e.orig}"
+                )
+            else:
+                # Generic case for other exceptions
+                _raise_http_exception(
+                    status_code=500,
+                    detail="Internal server error while creating user",
+                    log_message=f"Error creating user: {e}"
+                )
 
     def get_user(self, user_id: int) -> schema.UserFullResponse:
         """Retrieve a single user by ID, including profile details."""
-        # Fetch the user by ID, and check if it exists
-        existing_user = self.get(user_id)
-        if not existing_user:
-            raise ValueError("User not found")
+        try:
+            existing_user = self.get(user_id)  # Reuses the `get` method from BaseService
+            user_profile = existing_user.profile if existing_user.profile else None
 
-        # Map the User and UserProfile to the UserFullResponse schema
-        user_profile = existing_user.profile if existing_user.profile else None
-
-        # Prepare the full response model
-        user_response = schema.UserFullResponse(
-            user_id=existing_user.user_id,
-            username=existing_user.username,
-            password_hash=existing_user.password_hash,
-            is_active=existing_user.is_active,
-            created_at=existing_user.created_at,
-            updated_at=existing_user.updated_at,
-            profile=user_profile,
-        )
-        return user_response
-
-    def get_all_users(self) -> list[schema.UserFullResponse]:
-        """Retrieve all users."""
-        all_users = self.get_all()
-        return [
-            schema.UserFullResponse(
-                user_id=user.user_id,
-                username=user.username,
-                password_hash=user.password_hash,
-                is_active=user.is_active,
-                created_at=user.created_at,
-                updated_at=user.updated_at,
-                profile=user.profile,  # This will include the profile details if available
+            user_response = schema.UserFullResponse(
+                user_id=existing_user.user_id,
+                username=existing_user.username,
+                password_hash=existing_user.password_hash,
+                is_active=existing_user.is_active,
+                created_at=existing_user.created_at,
+                updated_at=existing_user.updated_at,
+                profile=user_profile,
             )
-            for user in all_users
-        ]
+            return user_response
+        except Exception as e:
+            _raise_http_exception(
+                status_code=404,
+                detail=f"User with ID {user_id} not found",
+                log_message=f"Error retrieving user with ID {user_id}: {e}"
+            )
+
+    def get_all_users(self) -> List[schema.UserFullResponse]:
+        """Retrieve all users."""
+        try:
+            all_users = self.get_all()  # Reuses the `get_all` method from BaseService
+            return [
+                schema.UserFullResponse(
+                    user_id=user.user_id,
+                    username=user.username,
+                    password_hash=user.password_hash,
+                    is_active=user.is_active,
+                    created_at=user.created_at,
+                    updated_at=user.updated_at,
+                    profile=user.profile,
+                )
+                for user in all_users
+            ]
+        except Exception as e:
+            _raise_http_exception(
+                status_code=500,
+                detail="Internal server error while fetching users",
+                log_message=f"Error retrieving all users: {e}"
+            )
 
     def update_user(self, user_id: int, user_data: schema.UserUpdate) -> User:
         """Update an existing user."""
-        # Fetch the user by ID
-        existing_user = self.session.query(User).filter(User.user_id == user_id).first()
+        try:
+            existing_user = self.get(user_id)  # Reuses the `get` method from BaseService
 
-        if not existing_user:
-            raise ValueError("User not found")
+            if user_data.username:
+                existing_user.username = user_data.username
 
-        # Update the username if provided
-        if user_data.username:
-            existing_user.username = user_data.username
+            if user_data.password:
+                existing_user.password_hash = self.pwd_context.hash(user_data.password)
 
-        # Update the password if provided
-        if user_data.password:
-            existing_user.password_hash = self.pwd_context.hash(user_data.password)
+            if user_data.is_active is not None:
+                existing_user.is_active = user_data.is_active
 
-        # Update the is_active flag if provided
-        if user_data.is_active is not None:
-            existing_user.is_active = user_data.is_active
+            if user_data.first_name or user_data.last_name:
+                if not existing_user.profile:
+                    existing_user.profile = UserProfile()
 
-        # Update the profile fields (first_name, last_name) if provided
-        if user_data.first_name or user_data.last_name:
-            if not existing_user.profile:
-                # If no profile exists, create a new one
-                existing_user.profile = UserProfile()
+                if user_data.first_name:
+                    existing_user.profile.first_name = user_data.first_name
+                if user_data.last_name:
+                    existing_user.profile.last_name = user_data.last_name
 
-            if user_data.first_name:
-                existing_user.profile.first_name = user_data.first_name
-            if user_data.last_name:
-                existing_user.profile.last_name = user_data.last_name
+            self.session.commit()
+            self.session.refresh(existing_user)
 
-        # Commit the changes to the database
-        self.session.commit()
-
-        # Refresh the user object to reflect the updated values
-        self.session.refresh(existing_user)
-
-        return existing_user
+            return existing_user
+        except Exception as e:
+            _raise_http_exception(
+                status_code=404,
+                detail=f"User with ID {user_id} not found for update",
+                log_message=f"Error updating user with ID {user_id}: {e}"
+            )
 
     def delete_user(self, user_id: int) -> dict:
         """Delete a user by ID."""
-        # Fetch the user with the associated profile (cascade delete will handle the profile)
-        user = self.session.query(User).filter(User.user_id == user_id).first()
-
-        if not user:
-            raise ValueError("User not found")
-
-        # Delete the user and commit the changes (profile will be deleted automatically)
-        self.session.delete(user)
-        self.session.commit()
-
-        return {"message": "User deleted successfully"}
+        try:
+            return self.delete(user_id)  # Reuses the `delete` method from BaseService
+        except Exception as e:
+            _raise_http_exception(
+                status_code=404,
+                detail=f"User with ID {user_id} not found for deletion",
+                log_message=f"Error deleting user with ID {user_id}: {e}"
+            )
 
     def get_by_username(self, username: str) -> Optional[User]:
-        """Retrieve a single user by username."""
-        return self.session.query(User).filter(User.username == username).first()
+        """Retrieve a user by username."""
+        try:
+            user = self.session.query(User).filter(User.username == username).first()
+            if not user:
+                _raise_http_exception(
+                    status_code=404,
+                    detail=f"User with username '{username}' not found",
+                    log_message=f"Error retrieving user with username '{username}': Not found"
+                )
+            return user
+        except Exception as e:
+            _raise_http_exception(
+                status_code=500,
+                detail="Internal server error while fetching user by username",
+                log_message=f"Error retrieving user by username '{username}': {e}"
+            )
+
