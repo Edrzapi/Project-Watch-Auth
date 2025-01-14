@@ -73,30 +73,41 @@ class UserService(BaseService[User]):
 
     def update_user(self, user_id: int, user_data: schema.UserUpdate) -> User:
         """Update an existing user."""
-        # Fetch the user
-        existing_user = self.get_user(user_id)
+        # Fetch the user by ID
+        existing_user = self.session.query(User).filter(User.user_id == user_id).first()
+
         if not existing_user:
             raise ValueError("User not found")
 
-        # Update fields
+        # Update the username if provided
         if user_data.username:
             existing_user.username = user_data.username
+
+        # Update the password if provided
         if user_data.password:
             existing_user.password_hash = self.pwd_context.hash(user_data.password)
+
+        # Update the is_active flag if provided
         if user_data.is_active is not None:
             existing_user.is_active = user_data.is_active
 
-        # Update the profile if provided
+        # Update the profile fields (first_name, last_name) if provided
         if user_data.first_name or user_data.last_name:
             if not existing_user.profile:
+                # If no profile exists, create a new one
                 existing_user.profile = UserProfile()
+
             if user_data.first_name:
                 existing_user.profile.first_name = user_data.first_name
             if user_data.last_name:
                 existing_user.profile.last_name = user_data.last_name
 
+        # Commit the changes to the database
         self.session.commit()
+
+        # Refresh the user object to reflect the updated values
         self.session.refresh(existing_user)
+
         return existing_user
 
     def delete_user(self, user_id: int) -> dict:

@@ -49,6 +49,8 @@ class UserUpdate(BaseModel):
     username: Optional[constr(min_length=1, max_length=50)] = None  # Optional username
     password: Optional[constr(min_length=8)] = None  # Optional password
     is_active: Optional[bool] = None  # Optional is_active flag
+    first_name: Optional[str] = None  # Include first_name
+    last_name: Optional[str] = None  # Include last_name
 
     @validator("password")
     def validate_password(cls, password):
