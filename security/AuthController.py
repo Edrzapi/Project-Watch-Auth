@@ -27,7 +27,7 @@ def register_user(
         deps: GenericDependencies[UserService] = Depends(get_user_service_dependency)):
     """Register a new user."""
     try:
-        logger.info(f"Attempting to register user: {user.email}")
+        logger.info(f"Attempting to register user: {user.username}")  # Changed to username
         return deps.get_service().create_user(user)
     except HTTPException as e:
         logger.error(f"User registration failed: {e.detail}")
@@ -47,7 +47,7 @@ def login_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     # Generate JWT token
-    access_token = auth_service.create_access_token(data={"sub": user.email})
+    access_token = auth_service.create_access_token(data={"sub": user.username})  # Changed to username
     return {"access_token": access_token, "token_type": "bearer"}
 
 

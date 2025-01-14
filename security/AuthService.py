@@ -9,8 +9,6 @@ from typing import Optional, Type
 from models.SQLModel import User
 
 load_dotenv()
-
-
 class AuthService:
     def __init__(self, session: Session):
         self.session = session
@@ -27,10 +25,10 @@ class AuthService:
         """Verify that a plain-text password matches the hashed password."""
         return self.pwd_context.verify(plain_password, hashed_password)
 
-    def authenticate_user(self, email: str, password: str) -> Optional[User]:
-        """Authenticate a user by email and password."""
-        user = self.session.query(User).filter(User.email == email).first()
-        if not user or not self.verify_password(password, user.password):
+    def authenticate_user(self, username: str, password: str) -> Optional[User]:
+        """Authenticate a user by username and password."""
+        user = self.session.query(User).filter(User.username == username).first()  # Change from email to username
+        if not user or not self.verify_password(password, user.password_hash):
             return None
         return user
 
@@ -51,13 +49,13 @@ class AuthService:
         )
         try:
             payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
-            email: str = payload.get("sub")
-            if email is None:
+            username: str = payload.get("sub")
+            if username is None:
                 raise credentials_exception
         except JWTError:
             raise credentials_exception
 
-        user = self.session.query(User).filter(User.email == email).first()
+        user = self.session.query(User).filter(User.username == username).first()  # Change from email to username
         if user is None:
             raise credentials_exception
         return user
