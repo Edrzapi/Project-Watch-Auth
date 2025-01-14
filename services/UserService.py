@@ -101,7 +101,17 @@ class UserService(BaseService[User]):
 
     def delete_user(self, user_id: int) -> dict:
         """Delete a user by ID."""
-        return self.delete(user_id)
+        # Fetch the user with the associated profile (cascade delete will handle the profile)
+        user = self.session.query(User).filter(User.user_id == user_id).first()
+
+        if not user:
+            raise ValueError("User not found")
+
+        # Delete the user and commit the changes (profile will be deleted automatically)
+        self.session.delete(user)
+        self.session.commit()
+
+        return {"message": "User deleted successfully"}
 
     def get_by_username(self, username: str) -> Optional[User]:
         """Retrieve a single user by username."""

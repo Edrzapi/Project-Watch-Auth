@@ -16,7 +16,7 @@ class User(Base):
     updated_at = Column(TIMESTAMP, server_default='CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP', nullable=True)
 
     # Relationship with UserProfile
-    profile = relationship("UserProfile", back_populates="user", uselist=False)
+    profile = relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete")
 
     def __repr__(self):
         return f"<User(username={self.username}, is_active={self.is_active})>"
