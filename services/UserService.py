@@ -1,7 +1,9 @@
 from typing import Optional
-from sqlalchemy.orm import Session
+
 from passlib.context import CryptContext
-from models.SQLModel import User
+from sqlalchemy.orm import Session
+
+from models.SQLModel import User, UserProfile
 from schemas import UserSchema as schema  # Assuming you have a UserSchema defined
 from services.BaseService import BaseService  # Import your BaseService
 
@@ -16,39 +18,91 @@ class UserService(BaseService[User]):
         # Hash the password before creating the user
         hashed_password = self.pwd_context.hash(user_data.password)
 
-        new_user = User(
-            email=user_data.email,
-            name=user_data.name,
-            password=hashed_password,  # Use the hashed password
-            phone=user_data.phone,
+        # Create the user profile, using empty strings if first_name or last_name are None
+        profile = UserProfile(
+            first_name=user_data.first_name or '',  # Use empty string if None
+            last_name=user_data.last_name or '',  # Use empty string if None
         )
+
+        # Create the user with the profile
+        new_user = User(
+            username=user_data.username,
+            password_hash=hashed_password,  # Use the hashed password
+            profile=profile,  # Create the associated user profile
+        )
+
         return self.create(new_user)
 
-    def get_user(self, user_id: int) -> User:
-        """Retrieve a single user by ID."""
-        return self.get(user_id)
+    def get_user(self, user_id: int) -> schema.UserFullResponse:
+        """Retrieve a single user by ID, including profile details."""
+        # Fetch the user by ID, and check if it exists
+        existing_user = self.get(user_id)
+        if not existing_user:
+            raise ValueError("User not found")
 
-    def get_all_users(self) -> list[User]:
+        # Map the User and UserProfile to the UserFullResponse schema
+        user_profile = existing_user.profile if existing_user.profile else None
+
+        # Prepare the full response model
+        user_response = schema.UserFullResponse(
+            user_id=existing_user.user_id,
+            username=existing_user.username,
+            password_hash=existing_user.password_hash,
+            is_active=existing_user.is_active,
+            created_at=existing_user.created_at,
+            updated_at=existing_user.updated_at,
+            profile=user_profile,
+        )
+        return user_response
+
+    def get_all_users(self) -> list[schema.UserFullResponse]:
         """Retrieve all users."""
-        return self.get_all()
+        all_users = self.get_all()
+        return [
+            schema.UserFullResponse(
+                user_id=user.user_id,
+                username=user.username,
+                password_hash=user.password_hash,
+                is_active=user.is_active,
+                created_at=user.created_at,
+                updated_at=user.updated_at,
+                profile=user.profile,  # This will include the profile details if available
+            )
+            for user in all_users
+        ]
 
     def update_user(self, user_id: int, user_data: schema.UserUpdate) -> User:
         """Update an existing user."""
-        # Hash the new password if it's being updated
-        hashed_password = self.pwd_context.hash(user_data.password) if user_data.password else None
+        # Fetch the user
+        existing_user = self.get_user(user_id)
+        if not existing_user:
+            raise ValueError("User not found")
 
-        updated_user = User(
-            email=user_data.email,
-            name=user_data.name,
-            password=hashed_password,  # Use the hashed password
-            phone=user_data.phone,
-        )
-        return self.update(user_id, updated_user)
+        # Update fields
+        if user_data.username:
+            existing_user.username = user_data.username
+        if user_data.password:
+            existing_user.password_hash = self.pwd_context.hash(user_data.password)
+        if user_data.is_active is not None:
+            existing_user.is_active = user_data.is_active
+
+        # Update the profile if provided
+        if user_data.first_name or user_data.last_name:
+            if not existing_user.profile:
+                existing_user.profile = UserProfile()
+            if user_data.first_name:
+                existing_user.profile.first_name = user_data.first_name
+            if user_data.last_name:
+                existing_user.profile.last_name = user_data.last_name
+
+        self.session.commit()
+        self.session.refresh(existing_user)
+        return existing_user
 
     def delete_user(self, user_id: int) -> dict:
         """Delete a user by ID."""
         return self.delete(user_id)
 
-    def get_by_name(self, name: str) -> User:
-        """Retrieve a single user by name."""
-        return self.get_user_by_name(name)
+    def get_by_username(self, username: str) -> Optional[User]:
+        """Retrieve a single user by username."""
+        return self.session.query(User).filter(User.username == username).first()

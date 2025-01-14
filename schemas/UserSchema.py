@@ -1,15 +1,38 @@
-from typing import Optional
-from pydantic import BaseModel, EmailStr, constr, Field, validator
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, constr
+from pydantic import validator
 
 
 class UserBase(BaseModel):
     username: constr(min_length=1, max_length=50)  # Username must be between 1 and 50 characters
-    is_active: Optional[bool] = True  # Default is active
+
+
+class UserProfileResponse(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True  # Allows ORM models to be converted into Pydantic models
+
+
+class UserFullResponse(UserBase):
+    user_id: int
+    password_hash: str  # Optionally, you could remove this for security reasons
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    profile: Optional[UserProfileResponse] = None  # Include profile details (first_name, last_name)
+
+    class Config:
+        from_attributes = True  # Use from_attributes to map the ORM models to Pydantic models
 
 
 class UserCreate(UserBase):
     password: constr(min_length=8)  # Password must be at least 8 characters long
+    first_name: Optional[str] = None  # Include first_name
+    last_name: Optional[str] = None  # Include last_name
 
     @validator("password")
     def validate_password(cls, password):
@@ -45,6 +68,7 @@ class User(UserBase):
     password_hash: str  # Store hashed password
     created_at: datetime
     updated_at: datetime
+    profile: Optional[UserProfileResponse] = None  # Include profile details (first_name, last_name)
 
     class Config:
-        orm_mode = True  # Use `orm_mode` for compatibility with ORMs
+        from_attributes = True  # Use `orm_mode` for compatibility with ORMs

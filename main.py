@@ -1,5 +1,4 @@
 from fastapi import FastAPI
-
 from routes.AppRoute import router as route
 from utils.ServerManager import ServerManager
 
@@ -15,7 +14,6 @@ server_manager = ServerManager()
 @app.on_event("startup")
 async def startup_event():
     try:
-        print(f"Please select from the following {server_manager.config.schema_list()}")
         default_database = "project_watch"
 
         if default_database:
@@ -46,5 +44,4 @@ app.include_router(route)
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=4000)
