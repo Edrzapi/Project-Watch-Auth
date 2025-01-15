@@ -7,13 +7,16 @@ from datetime import timedelta, datetime
 from sqlalchemy.orm import Session
 from typing import Optional, Type
 from models.SQLModel import User
+from utils.ServerManager import ServerManager
+
+server_manager = ServerManager()
 
 load_dotenv()
 class AuthService:
     def __init__(self, session: Session):
         self.session = session
         self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        self.secret_key = os.getenv('JWT_KEY')
+        self.secret_key = server_manager.get_secret("JWT")["KEY"]
         self.algorithm = "HS256"
         self.access_token_expire_minutes = 30
 

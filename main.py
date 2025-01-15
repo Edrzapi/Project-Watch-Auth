@@ -43,5 +43,6 @@ async def shutdown_event():
 app.include_router(route)
 
 if __name__ == "__main__":
+
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=4000)

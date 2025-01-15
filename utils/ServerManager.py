@@ -34,7 +34,7 @@ class ServerManager:
         if not hasattr(self, 'initialized'):
             self.secret_name = secret_name or os.getenv('SECRET_NAME')
             self.region_name = region_name or os.getenv('REGION_NAME')
-            self.secret = self._get_secret()
+            self.secret = self.get_secret(os.getenv('SECRET_NAME'))
             self.config = DatabaseConfig(self.secret)
 
             # Session and engine setup
@@ -99,13 +99,13 @@ class ServerManager:
         if self.scoped_session:
             self.scoped_session.remove()
 
-    def _get_secret(self):
+    def get_secret(self, secret_name):
         """Retrieves the secret from AWS Secrets Manager."""
         session = boto3.session.Session()
         client = session.client(service_name='secretsmanager', region_name=self.region_name)
 
         try:
-            response = client.get_secret_value(SecretId=self.secret_name)
+            response = client.get_secret_value(SecretId=str(secret_name))
             secret = response.get('SecretString', '{}')
             logger.info("Successfully retrieved secret from AWS Secrets Manager.")
             return json.loads(secret)
